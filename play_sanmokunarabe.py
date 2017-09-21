@@ -30,6 +30,7 @@ class QFunction(chainer.Chain):
         h = F.leaky_relu(self.l0(x))
         h = F.leaky_relu(self.l1(h))
         h = F.leaky_relu(self.l2(h))
+        return chainerrl.action_value.DiscreteActionValue(self.l3(h))
 
 # 碁盤クラス
 class GoBoard():
@@ -139,8 +140,7 @@ def main():
 
     # Use Adam to optimize q_func. eps=1e-2 is for stability.
     optimizer = chainer.optimizers.Adam(eps=1e-2)
-    optimizer.setup(q_func)
-    q_func.to_cpu()
+    optimizer.setup(q_func)    
 
     # Set the discount factor that discounts future rewards.
     gamma = 0.95
@@ -152,38 +152,46 @@ def main():
     # Specify a replay buffer and its capacity.
     replay_buffer = chainerrl.replay_buffer.ReplayBuffer(capacity=10 ** 6)
 
-    # Now create agents that will interact with the environment.
-    agent_black = chainerrl.agents.DQN(
+    # Now create agents that will interact with the environment.    
+    agent = chainerrl.agents.DQN(
         q_func, optimizer, replay_buffer, gamma, explorer,
-        replay_start_size=500, update_interval=1, target_update_interval=100)
-    agent_white = chainerrl.agents.DQN(
-        q_func, optimizer, replay_buffer, gamma, explorer,
-        replay_start_size=500, update_interval=1, target_update_interval=100)
-    
-    agent_black.load('result_black_1000')
-    agent_white.load('result_white_1000')
+        replay_start_size=500, update_interval=1, target_update_interval=100)    
 
-    #cmd = input('先制（黒石, 1） or 後攻（白石, 2）を選択：')
-    #cmd = int(cmd)
-    #assert(cmd == 1 or cmd == 2)
-    print('あなたは「○」（後攻）です。ゲームスタート！')
-    board.board_reset()     
+    you = input('先攻（黒石, 1） or 後攻（白石, 2）を選択：')
+    you = int(you)
+    trn = you    
+    assert(you == BLACK or you == WHITE)
+    level = input('難易度（弱 1〜5 強）：')
+    level = int(level) * 10000
+    if you == BLACK:
+        s = '「●」（先攻）' 
+        file = 'result_white_' + str(level)        
+        a = WHITE
+    else:
+        s = '「○」（後攻）'
+        file = 'result_black_' + str(level)      
+        a = BLACK
+    agent.load(file)
+    print('あなたは{}です。ゲームスタート！'.format(s))
+    board.show_board()
+    board.board_reset()
     while not board.game_end:
-        pos = agent_black.act(board.board)
-        board.agent_action(pos)
-        print('エージェントの番 -> {}'.format(pos))
-        board.show_board()
-        if board.game_end:
-            if board.miss_end:
-                print('エージェントの打ち間違い！')
-            elif board.winner == BLACK:
-                print('あなたの負け！')
-            else:
-                print('引き分け') 
-            board.board_reset()
-            continue
+        if trn == 2:
+            pos = agent.act(board.board)
+            board.agent_action(pos)
+            print('エージェントの番 -> {}'.format(pos))
+            board.show_board()
+            if board.game_end:
+                if board.miss_end:
+                    print('エージェントの打ち間違い！あなたの勝ち！')
+                elif board.winner == a:
+                    print('あなたの負け！')
+                else:
+                    print('引き分け') 
+                #board.board_reset()
+                continue            
+            board.change_turn() 
 
-        board.change_turn() 
         pos = raw_input('どこに石を置きますか？ (行列で指定。例 "1 2")：')        
         pos = pos.split(' ')        
         # 1次元の座標に変換する
@@ -191,15 +199,14 @@ def main():
         board.agent_action(pos)
         board.show_board()
         if board.game_end:
-            if board.winner == WHITE:
+            if board.winner == you:
                 print('あなたの勝ち！')
-            elif board.winner == BLACK:
-                print('あなたの負け！')
             else:
                 print('引き分け')
-            board.board_reset()
+            #board.board_reset()
             continue
 
+        trn = 2
         board.change_turn()  
 
 if __name__ == '__main__':
